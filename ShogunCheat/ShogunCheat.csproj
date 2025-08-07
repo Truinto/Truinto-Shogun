@@ -9,7 +9,7 @@
 
 	<ItemGroup>
 		<Reference Private="false" Include="Assembly-CSharp" HintPath="$(GameManaged)/Assembly-CSharp.dll" Publicize="true" />
-		
+
 		<Reference Private="false" Include="UnityMod" HintPath="$(SharedDir)/UnityMod-net472.dll" />
 		<Reference Private="false" Include="BepInEx" HintPath="$(ModFolder)/../core/BepInEx.dll" />
 		<Reference Private="false" Include="0Harmony" HintPath="$(ModFolder)/../core/0Harmony.dll" />
@@ -18,14 +18,24 @@
 		<Reference Private="false" Include="UnityEngine.UI" HintPath="$(GameManaged)/UnityEngine.UI.dll" />
 		<Reference Private="false" Include="UnityEngine.CoreModule" HintPath="$(GameManaged)/UnityEngine.CoreModule.dll" />
 		<Reference Private="false" Include="UnityEngine.AnimationModule" HintPath="$(GameManaged)/UnityEngine.AnimationModule.dll" />
+		<Reference Private="false" Include="Newtonsoft.Json" HintPath="$(GameManaged)/Newtonsoft.Json.dll" />
+
+		<Compile Include="$(SharedDir)General/Attributes.cs" Link="Shared/Attributes.cs" />
+		<Compile Include="$(SharedDir)General/JsonNewtonsoft.cs" Link="Shared/JsonNewtonsoft.cs" />
 	</ItemGroup>
 
 	<!-- Target Automation -->
 	<ItemGroup>
-		<TargetMergeItems Include="$(SharedDir)/UnityMod.dll" />
+		<TargetMergeItems Include="$(SharedDir)/UnityMod-net472.dll" />
 		<TargetCopyTarget Include="$(ModFolder)/$(TargetName)/" />
-		<TargetZipItems Include="$(ModFolder)/$(TargetName)/$(TargetName).dll" />
-		<TargetZipTarget Include="$(SolutionDir)/publish/$(TargetName).zip" />
+
+		<TargetZipWorkDir Include="$(ModFolder)" />
+		<TargetZipItems Include="$(ModFolder)/ShogunCheat/ShogunCheat.dll" />
+		<TargetZipItems Include="$(ModFolder)/ShockwaveTriggerAfterPush/ShockwaveTriggerAfterPush.dll" />
+		<TargetZipItems Include="$(ModFolder)/ThornsMelee/ThornsMelee.dll" />
+		<TargetZipItems Include="$(ModFolder)/TrapStopDash/TrapStopDash.dll" />
+		<TargetZipItems Include="$(ModFolder)/BossHealth/BossHealth.dll" />
+		<TargetZipTarget Include="$(SolutionDir)/publish/Truinto-Shogun.zip" />
 	</ItemGroup>
 
 </Project>

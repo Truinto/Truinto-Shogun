@@ -226,14 +226,11 @@ namespace ShockwaveTriggerAfterPush
                     EffectsManager.Instance.ScreenShake();
                     SoundEffectsManager.Instance.Play("CombatHit");
                 }
-                Cell cell = agent.Cell.Neighbour(direction, 1);
+                var cell = agent.Cell.Neighbour(direction, 1);
+                var targetRecoilAgent = cell?.Agent;
                 if (cell == null)
-                {
-                    __instance.runningCoroutinesCounter--;
-                    yield break;
-                }
-                Agent targetRecoilAgent = cell.Agent;
-                if (targetRecoilAgent == null)
+                { }
+                else if (targetRecoilAgent == null)
                 {
                     if (agent.IsAlive)
                         agent.Cell = cell;

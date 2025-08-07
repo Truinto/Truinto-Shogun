@@ -3,7 +3,10 @@ using BepInEx.Logging;
 using CombatEnums;
 using HarmonyLib;
 using Parameters;
+using Shared.CollectionNS;
+using SkillEnums;
 using System.Collections;
+using System.Reflection;
 using System.Text;
 using TileEnums;
 using TMPro;
@@ -34,36 +37,11 @@ namespace ShogunCheat
     [HarmonyPatch]
     public static class Patches
     {
-        #region Main
+        #region Debug
 
-        private static bool Initialized;
-        [HarmonyPatch(typeof(TitleScreenManager), nameof(TitleScreenManager.Awake))]
+        [HarmonyPatch(typeof(MapManager), nameof(MapManager.Awake))]
         [HarmonyPostfix]
-        public static void LatePatch()
-        {
-            if (Initialized)
-                return;
-            Initialized = true;
-
-            Plugin.Log($"Initialize LatePatch");
-            EventsManager.Instance.EnemyDied.AddListener(dropCoin);
-
-            static void dropCoin(Enemy enemy)
-            {
-                PickupFactory.Instance.InstantiatePickup(PickupEnums.PickupEnum.Coin, enemy.Cell);
-                Plugin.Log($"+1 coin");
-            }
-        }
-
-        #endregion
-
-        #region Upgrades
-
-        // TODO: make after-boss shops less like to spawn sacrifice
-
-        //[HarmonyPatch(typeof(MapManager), nameof(MapManager.Awake))]
-        //[HarmonyPostfix]
-        public static void UpgradesSandbox()
+        public static void Sandbox()
         {
             try
             {
@@ -71,19 +49,23 @@ namespace ShogunCheat
                 _ = MapManager.Instance.map.MapLocations[0].location;
 
                 //TilesFactory.Instance.Create(AttackEnum.TwinTessen, 4);
+                //Resources.Load<GameObject>("Agents/Enemies/ThornsEnemy");
+
+                // TODO: Ronin, get Throns
+                // startingRandomDeck
+
             } catch (Exception e)
             {
                 Plugin.Log($"Exception in Sandbox {e}");
             }
         }
 
-        //[HarmonyPatch(typeof(Progression), nameof(Progression.PickRoomVariant))]
-        //[HarmonyPostfix]
+        [HarmonyPatch(typeof(Progression), nameof(Progression.PickRoomVariant))]
+        [HarmonyPostfix]
         public static void DebugRooms(Location location, int iRoom, ref int __result)
         {
             try
             {
-                // TODO: ShopLocation init, replace sacrifice after boss battles
                 var sb = new StringBuilder();
                 int num = location.NVariantsForRoom(iRoom);
                 sb.Append($"Pick rooms ({num}): ");
@@ -91,7 +73,9 @@ namespace ShogunCheat
                 {
                     var room = location.GetRoom(iRoom, i);
                     if (room is ShopRoom shop && location is ShopLocation shopLocation)
+                    {
                         sb.Append($"shop={room.Id}:{room.name}:{shopLocation.leftShopComponent.GetComponent<TileUpgradeInShop>()?.tileUpgrades[0].tileUpgradeEnum}, ");
+                    }
                     else
                         sb.Append($"room={room.Id}:{room.name}, ");
                 }
@@ -102,6 +86,46 @@ namespace ShogunCheat
                 Plugin.Log($"Exception reading room {e}");
             }
         }
+
+        #endregion
+
+        #region BeginRun
+
+        public static Skill[]? AllSkills;
+
+        [HarmonyPatch(typeof(MetricsManager), nameof(MetricsManager.BeginRun))]
+        [HarmonyPostfix]
+        public static void BeginRun()
+        {
+            try
+            {
+                EventsManager.Instance.EnemyDied.AddListener(dropCoin);
+
+                if (!Globals.ContinueRun)
+                {
+                    AllSkills ??= Resources.LoadAll(SkillsManager.Instance.skillsResourcesPath).SelectNotNull(f => (f as GameObject)?.GetComponent<Skill>()).ToArray();
+                    Plugin.Log($"Skills ({AllSkills.Length}): {AllSkills.Join(j => j.SkillEnum.ToString())}");
+                    foreach (var freebie in Settings.State.BeginRunWithSkills)
+                    {
+                        var skill = AllSkills.FirstOrDefault(f => f.SkillEnum == freebie);
+                        if (skill != null)
+                            SkillsManager.Instance.PickUpSkill(skill);
+                    }
+                }
+            } catch (Exception e)
+            {
+                Plugin.Log($"{e}");
+            }
+
+            static void dropCoin(Enemy enemy)
+            {
+                PickupFactory.Instance.InstantiatePickup(PickupEnums.PickupEnum.Coin, enemy.Cell);
+            }
+        }
+
+        #endregion
+
+        #region Upgrades
 
         [HarmonyPatch(typeof(NewTileReward), nameof(NewTileReward.GetPseudoRandomAttackEnums))]
         [HarmonyPostfix]
@@ -156,9 +180,36 @@ namespace ShogunCheat
             type = TileUpgradeEnum.Shockwave;
             if (__instance.upgrades.TryGetValue(type, out upgrade))
             {
-                __instance.upgradesAndProbabilities[upgrade] *= 2f;
                 if (!TilesManager.Instance.Deck.Any(a => a.Attack.AttackEffect is AttackEffectEnum.Shockwave))
+                    __instance.upgradesAndProbabilities[upgrade] *= 2f;
+                if (TilesManager.Instance.Deck.Any(a => a.Attack.AttackEffect is AttackEffectEnum.None
+                    && a.Attack.AttackEnum is AttackEnum.KiPush or AttackEnum.Tanegashima or AttackEnum.TwinTessen or AttackEnum.DragonPunch or AttackEnum.Kunai or AttackEnum.Thorns))
                     __instance.upgradesAndProbabilities[upgrade] *= 10f;
+            }
+
+            // make -4 CD more common
+            type = TileUpgradeEnum.Cooldown_m4_Attack_m1;
+            if (__instance.upgrades.TryGetValue(type, out upgrade))
+            {
+                if (TilesManager.Instance.Deck.Average(s => s.Attack.Cooldown) >= 6d)
+                    __instance.upgradesAndProbabilities[upgrade] *= 10f;
+            }
+
+            // make +2 Attack more common
+            type = TileUpgradeEnum.Attack_p2_Cooldown_p3;
+            if (__instance.upgrades.TryGetValue(type, out upgrade))
+            {
+                if (TilesManager.Instance.Deck.Max(s => s.Attack.Value) <= 4)
+                    __instance.upgradesAndProbabilities[upgrade] *= 10f;
+            }
+
+            // make Free Play more common
+            type = TileUpgradeEnum.FreePlay;
+            if (__instance.upgrades.TryGetValue(type, out upgrade))
+            {
+                if (TilesManager.Instance.Deck.Any(a => a.Attack.TileEffect is TileEffectEnum.None
+                    && a.Attack.AttackEnum is AttackEnum.SmokeBomb or AttackEnum.BackSmokeBomb or AttackEnum.ShadowDash or AttackEnum.BackShadowDash))
+                    __instance.upgradesAndProbabilities[upgrade] *= 5f;
             }
         }
 
@@ -174,23 +225,50 @@ namespace ShogunCheat
         [HarmonyPrefix]
         public static void ChangeTileUpgradeShop(ref RewardSaveData? rewardSaveData, TileUpgradeInShop __instance)
         {
-            Plugin.Log($"Shop Gold={__instance.basePrice} - {__instance.tileUpgrades.Join(f => f.tileUpgradeEnum.ToString())}");
-
-            if (rewardSaveData == null)
+            try
             {
-                var upgrades = __instance.tileUpgrades.ToList();
+                Plugin.Log($"Shop Gold={__instance.basePrice} - {__instance.tileUpgrades.Join(f => f.tileUpgradeEnum.ToString())}");
 
-                if (upgrades.Count >= 2 && !TilesManager.Instance.Deck.Any(a => a.Attack is KunaiAttack && a.Attack.AttackEffect is AttackEffectEnum.None && a.Attack.Cooldown >= 5))
-                    upgrades.RemoveAll(f => f.tileUpgradeEnum is TileUpgradeEnum.PerfectStrike);
+                if (rewardSaveData == null)
+                {
+                    var upgrades = __instance.tileUpgrades.ToList();
 
-                if (upgrades.Count >= 2)
-                    upgrades.RemoveAll(f => f.tileUpgradeEnum is TileUpgradeEnum.Sacrifice);
+                    if (upgrades.Count > 0 && upgrades[0].tileUpgradeEnum is TileUpgradeEnum.Sacrifice)
+                    {
+                        upgrades[0] = getUpgrade(TileUpgradeEnum.UpgradeSlots_p1);
+                        __instance.basePrice = 10;
+                    }
 
-                if (upgrades.Count >= 2)
-                    upgrades.RemoveAll(f => f.tileUpgradeEnum is TileUpgradeEnum.Cooldown_m1);
+                    if (upgrades.Count > 1 && !TilesManager.Instance.Deck.Any(a => a.Attack is KunaiAttack && a.Attack.AttackEffect is AttackEffectEnum.None && a.Attack.Cooldown >= 5))
+                        upgrades.RemoveAll(f => f.tileUpgradeEnum is TileUpgradeEnum.PerfectStrike);
 
-                if (upgrades.Count > 0)
-                    __instance.tileUpgrades = upgrades.ToArray();
+                    if (upgrades.Count > 1)
+                        upgrades.RemoveAll(f => f.tileUpgradeEnum is TileUpgradeEnum.Sacrifice);
+
+                    if (upgrades.Count > 1)
+                        upgrades.RemoveAll(f => f.tileUpgradeEnum is TileUpgradeEnum.Cooldown_m1);
+
+                    if (upgrades.Count > 0)
+                        __instance.tileUpgrades = upgrades.ToArray();
+                }
+            } catch (Exception e)
+            {
+                Plugin.Log($"{e}");
+            }
+            return;
+
+            TileUpgrade getUpgrade(TileUpgradeEnum upgrade)
+            {
+                foreach (var shop in MapManager.Instance.map.shopComponentsLeft)
+                {
+                    var tileInShop = shop.GetComponent<TileUpgradeInShop>();
+                    if (tileInShop == null)
+                        continue;
+                    foreach (var up in tileInShop.tileUpgrades)
+                        if (up.tileUpgradeEnum == upgrade)
+                            return up;
+                }
+                throw new Exception("TileUpgradeEnum in no shops");
             }
         }
 
@@ -203,17 +281,6 @@ namespace ShogunCheat
             //EventsManager.Instance.SaveRunProgress.Invoke();
             return false;
         }
-
-        // TODO: remove
-        //[HarmonyPatch(typeof(StatsTileUpgrade), nameof(StatsTileUpgrade.Upgrade))]
-        //[HarmonyPrefix]
-        //public static void ChangeTileUpgradeCooldown(StatsTileUpgrade __instance)
-        //{
-        //    if (__instance.tileUpgradeEnum is TileUpgradeEnum.Attack_p2_Cooldown_p3)
-        //    {
-        //        __instance.cooldownDelta = 1;
-        //    }
-        //}
 
         /// <summary>
         /// Always random attack effect.
@@ -241,6 +308,30 @@ namespace ShogunCheat
             tileNew.Interactable = false;
             tileNew.Graphics.ShowLevel(true);
             return false;
+        }
+
+        [HarmonyPatch(typeof(StatsTileUpgrade), nameof(StatsTileUpgrade._CanUpgradeTileAndWhy))]
+        [HarmonyPostfix]
+        public static void AllowNegativeUpgrades1(Tile tile, ref (bool value, string whyLocKey) __result, StatsTileUpgrade __instance)
+        {
+            if (__instance.attackDelta > 0 && !tile.Attack.HasValue)
+                return;
+            if (__result.whyLocKey is "CannotUpgrade_MaxCooldown" or "CannotUpgrade_MinAttack" or "CannotUpgrade_NoAttack")
+                __result = (true, "Can upgrade. This variable should not be used.");
+        }
+
+        [HarmonyPatch(typeof(AddAttackEffectTileUpgrade), nameof(AddAttackEffectTileUpgrade.CanUpgradeTile))]
+        [HarmonyPostfix]
+        public static void AllowNegativeUpgrades2(Tile tile, ref bool __result, AddAttackEffectTileUpgrade __instance)
+        {
+            __result = tile.Attack.Level < tile.Attack.MaxLevel && tile.Attack.AttackEffect is AttackEffectEnum.None && tile.Attack.CompatibleEffects.Contains(__instance.effect);
+        }
+
+        [HarmonyPatch(typeof(AddTileEffectTileUpgrade), nameof(AddTileEffectTileUpgrade.CanUpgradeTile))]
+        [HarmonyPostfix]
+        public static void AllowNegativeUpgrades3(Tile tile, ref bool __result, AddTileEffectTileUpgrade __instance)
+        {
+            __result = tile.Attack.Level < tile.Attack.MaxLevel && tile.Attack.TileEffect is TileEffectEnum.None;
         }
 
         #endregion
@@ -275,18 +366,38 @@ namespace ShogunCheat
             __result = 1;
         }
 
-        [HarmonyPatch(typeof(CrossbowAttack), nameof(CrossbowAttack.InitialCooldown), MethodType.Getter)]
+        [HarmonyPatch(typeof(CombatManager), nameof(CombatManager.HeroPlayedTile))]
         [HarmonyPostfix]
-        public static void CrossbowCooldown(ref int __result)
+        public static void CrossbowReloadFree(Tile tile, CombatManager __instance)
         {
-            __result = 8;
+            if (tile.Attack.AttackEnum is AttackEnum.Crossbow && tile.Attack.Value == 0)
+                __instance.heroPlayedTileInThisUpdate = false;
         }
 
         [HarmonyPatch(typeof(CrossbowAttack), nameof(CrossbowAttack.Attack))]
         [HarmonyPostfix]
-        public static void CrossbowReload(CrossbowAttack __instance)
+        public static void CrossbowReloadSprite1(CrossbowAttack __instance)
         {
-            __instance.Reload(true);
+            if (__instance.TileEffect != TileEffectEnum.FreePlay)
+                __instance.tile.Graphics.background.sprite = TilesFactory.Instance.Sprites.TileBackgroundSprites[__instance.Value == 0 ? TileEffectEnum.FreePlay : TileEffectEnum.None];
+            else
+                __instance.Reload(true);
+        }
+
+        [HarmonyPatch(typeof(CrossbowAttack), nameof(CrossbowAttack.Reload))]
+        [HarmonyPostfix]
+        public static void CrossbowReloadSprite2(CrossbowAttack __instance)
+        {
+            if (__instance.TileEffect != TileEffectEnum.FreePlay)
+                __instance.tile.Graphics.background.sprite = TilesFactory.Instance.Sprites.TileBackgroundSprites[__instance.Value == 0 ? TileEffectEnum.FreePlay : TileEffectEnum.None];
+        }
+
+        [HarmonyPatch(typeof(CrossbowAttack), nameof(CrossbowAttack.Initialize))]
+        [HarmonyPostfix]
+        public static void CrossbowReloadSprite3(CrossbowAttack __instance)
+        {
+            if (__instance.TileEffect != TileEffectEnum.FreePlay)
+                __instance.tile.Graphics.background.sprite = TilesFactory.Instance.Sprites.TileBackgroundSprites[__instance.Value == 0 ? TileEffectEnum.FreePlay : TileEffectEnum.None];
         }
 
         [HarmonyPatch(typeof(BlazingSuiseiAttack), nameof(BlazingSuiseiAttack.PerformAttack))]
@@ -335,6 +446,26 @@ namespace ShogunCheat
             }
         }
 
+        [HarmonyPatch(typeof(ChakramAttack), nameof(ChakramAttack.CompatibleEffects), MethodType.Getter)]
+        [HarmonyPrefix]
+        public static void ChakramDoubleStrike(ChakramAttack __instance)
+        {
+            if (!TilesFactory.Instance.Sprites.TileSymbolSprites.ContainsKey((AttackEnum.Chakram, AttackEffectEnum.DoubleStrike)))
+            {
+                TilesFactory.Instance.Sprites.TileSymbolSprites[(AttackEnum.Chakram, AttackEffectEnum.DoubleStrike)]
+                    = TilesFactory.Instance.Sprites.TileSymbolSprites[(AttackEnum.Chakram, AttackEffectEnum.Curse)];
+                __instance.CompatibleEffects =
+                    [
+                        AttackEffectEnum.Ice,
+                        AttackEffectEnum.Shockwave,
+                        AttackEffectEnum.Poison,
+                        AttackEffectEnum.PerfectStrike,
+                        AttackEffectEnum.Curse,
+                        AttackEffectEnum.DoubleStrike,
+                    ];
+            }
+        }
+
         #endregion
 
         #region Enemies
@@ -351,12 +482,17 @@ namespace ShogunCheat
         [HarmonyPrefix]
         public static bool CorruptedProgenyActions(CorruptedProgenyEnemy __instance, ref ActionEnum __result)
         {
-            if (__instance.FirstTurn || __instance.previousAction is ActionEnum.Attack)
+            if (__instance.FirstTurn)
+                __result = ActionEnum.Wait;
+            else if (__instance.previousAction is ActionEnum.Attack)
                 __result = ActionEnum.Wait;
             else if (__instance.AttackQueue.NTiles == 0)
                 __result = __instance.PlayTile(AttackEnum.CorruptedBarrage, __instance.AttackEffect);
             else if (__instance.AttackQueue.HasOffensiveAttack)
+            {
                 __result = ActionEnum.Attack;
+                __instance.ApplyPoisonStatus(1);
+            }
             else
                 __result = ActionEnum.Wait;
             return false;

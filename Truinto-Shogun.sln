@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TrapStopDash", "TrapStopDas
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BossHealth", "BossHealth\BossHealth.csproj", "{BEBCC287-C897-4489-9AE2-58771FED36BA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ThornsMelee", "ThornsMelee\ThornsMelee.csproj", "{036E193D-7020-47D3-B97C-53C3EB90C8CA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{BEBCC287-C897-4489-9AE2-58771FED36BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BEBCC287-C897-4489-9AE2-58771FED36BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BEBCC287-C897-4489-9AE2-58771FED36BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{036E193D-7020-47D3-B97C-53C3EB90C8CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{036E193D-7020-47D3-B97C-53C3EB90C8CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{036E193D-7020-47D3-B97C-53C3EB90C8CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{036E193D-7020-47D3-B97C-53C3EB90C8CA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
