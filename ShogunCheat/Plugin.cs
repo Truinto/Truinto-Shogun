@@ -39,17 +39,21 @@ namespace ShogunCheat
     {
         #region Debug
 
-        [HarmonyPatch(typeof(MapManager), nameof(MapManager.Awake))]
+        [HarmonyPatch(typeof(CombatSceneManager), nameof(CombatSceneManager.BeginRun))]
         [HarmonyPostfix]
         public static void Sandbox()
         {
             try
             {
-                Plugin.Log($"Shop components: {MapManager.Instance.map.shopComponentsLeft.Join(f => f.name)}");
-                _ = MapManager.Instance.map.MapLocations[0].location;
+                //var rng = TilesFactory.Instance.PseudoRandomAttackEnumsGenerator;
+                //Plugin.Log($"Tile RNG:");
+                //for (int i = 0; i < rng._choices.Length; i++)
+                //    Debug.Log($"\t{rng._choices[i],16}\t{rng._baseProbabilities[i]}");
 
                 //TilesFactory.Instance.Create(AttackEnum.TwinTessen, 4);
                 //Resources.Load<GameObject>("Agents/Enemies/ThornsEnemy");
+                //Plugin.Log($"Shop components: {MapManager.Instance.map.shopComponentsLeft.Join(f => f.name)}");
+                //_ = MapManager.Instance.map.MapLocations[0].location;
 
                 // TODO: Ronin, get Throns
                 // startingRandomDeck
@@ -101,15 +105,18 @@ namespace ShogunCheat
             {
                 EventsManager.Instance.EnemyDied.AddListener(dropCoin);
 
-                if (!Globals.ContinueRun)
+                //if (!Globals.ContinueRun)
                 {
                     AllSkills ??= Resources.LoadAll(SkillsManager.Instance.skillsResourcesPath).SelectNotNull(f => (f as GameObject)?.GetComponent<Skill>()).ToArray();
                     Plugin.Log($"Skills ({AllSkills.Length}): {AllSkills.Join(j => j.SkillEnum.ToString())}");
                     foreach (var freebie in Settings.State.BeginRunWithSkills)
                     {
                         var skill = AllSkills.FirstOrDefault(f => f.SkillEnum == freebie);
-                        if (skill != null)
+                        if (skill != null && !SkillsManager.Instance.HasSkill(skill))
+                        {
+                            skill = UnityEngine.Object.Instantiate(skill.gameObject).GetComponent<Skill>();
                             SkillsManager.Instance.PickUpSkill(skill);
+                        }
                     }
                 }
             } catch (Exception e)
@@ -128,10 +135,30 @@ namespace ShogunCheat
         #region Upgrades
 
         [HarmonyPatch(typeof(NewTileReward), nameof(NewTileReward.GetPseudoRandomAttackEnums))]
-        [HarmonyPostfix]
-        public static void ChangeNewTileRewards(ref AttackEnum[] __result)
+        [HarmonyPrefix]
+        public static void ChangeNewTileRewards(ref AttackEnum[] __result, NewTileReward __instance)
         {
-            // could change the reward selection here
+            // reduce duplicates from deck
+            var rng = TilesFactory.Instance.PseudoRandomAttackEnumsGenerator;
+            foreach (var tile in TilesManager.Instance.Deck)
+            {
+                int index = rng._choices.GetIndex(tile.Attack.AttackEnum);
+                if (index < 0)
+                    continue;
+                rng._currentProbabilities[index] = 0.1f;
+            }
+
+            // reduce chance, if rerolled
+            foreach (var pedestal in __instance.NewTilePedestals)
+            {
+                var attack = pedestal?.Tile?.Attack?.AttackEnum;
+                if (attack == null)
+                    continue;
+                int index = rng._choices.GetIndex(attack.Value);
+                if (index < 0)
+                    continue;
+                rng._currentProbabilities[index] = 0.1f;
+            }
         }
 
         [HarmonyPatch(typeof(TileUpgradeReward), nameof(TileUpgradeReward.InitializeUpgradesAndProbabilities))]
@@ -279,6 +306,19 @@ namespace ShogunCheat
             __instance.price.Pay();
             __instance.price.Value += __instance.basePrice > 10 ? __instance.basePrice / 2 : __instance.basePrice;
             //EventsManager.Instance.SaveRunProgress.Invoke();
+            return false;
+        }
+
+        [HarmonyPatch(typeof(RewardRerolling), nameof(RewardRerolling.RerollButtonPressed))]
+        [HarmonyPrefix]
+        public static bool ChangeRewardRerollCost(RewardRerolling __instance)
+        {
+            __instance.rewardsScreen.RerollButtonPressed();
+            Globals.Coins -= __instance.RerollPrice;
+            SoundEffectsManager.Instance.Play("Reroll");
+            SoundEffectsManager.Instance.Play("MoneySpent");
+            //__instance.RerollPrice += __instance.basePrice;
+            __instance.UpdateState(allowButtonInteraction: false);
             return false;
         }
 
