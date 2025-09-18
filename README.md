@@ -18,7 +18,7 @@ Installation
 -----------
 * You will need [BepInEx](https://github.com/BepInEx/BepInEx/releases).
 * Follow the installation procedure.
-* Download a release [https://github.com/Truinto/Truinto-Shogun/releases](https://github.com/Truinto/Truinto-PotionCraft/releases).
+* Download a release [https://github.com/Truinto/Truinto-Shogun/releases](https://github.com/Truinto/Truinto-Shogun/releases).
 * Extract dll into BepInEx/plugins folder.
 
 Contact
